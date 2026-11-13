@@ -1,7 +1,12 @@
 # Changelog
 
-<<<<<<< HEAD
 All notable changes to the AiCRM project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [0.13.1] — 2026-11-12
+
+### Changed & Fixed
+- **Org transfer & conflict cleanup** — updated remote references in `DEPLOY.md` and `STRUCTURE.md` to `RealEstateCRMLLC/aicrm`, resolved leftover merge conflict markers across `.gitignore`, `CHANGELOG.md`, `ROADMAP.md`, and `TODO.md`, added `*.log` ignore rule while keeping databases tracked, synced `VERSION.md` and `package.json` to `0.13.1`, and moved default `dev` port from `3001` to `3007` (avoiding collision with LeadG).
 
 ## [0.13.0] — 2026-08-18
 
@@ -198,18 +203,10 @@ This formalizes Option B (built-in brain as default) with a clean, gradual upgra
 - Prisma ORM schema, encryption lib, API vault + router routes
 - Model Manager UI, architectural docs
 
-## [0.1.0] — 2026-08-05
-=======
-All notable changes to this project will be documented in this file.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
->>>>>>> origin/jules-3434254056450392757-d9850c0f
-
 ## [0.1.0] - 2026-08-05
 ### Added
-<<<<<<< HEAD
 - Initial project vision (README.md): HyperNexus MCP orchestration, multi-model routing, real estate CRM scope
 - Foundation documentation
-=======
 - **Phase 1: Environment & MCP Initialization:**
     - Scaffolded the foundation with Next.js 16 (App Router), TypeScript, and TailwindCSS.
 - **Phase 2: Security & The Multi-Model Router:**
@@ -218,4 +215,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     - Added `src/lib/encryption.ts` using Node.js `crypto` (`aes-256-gcm`) to encrypt API keys at rest.
     - Built the `ModelManager` UI to allow users to securely toggle and input API keys for various cloud providers and local orchestrators.
     - Initiated core documentation standards (`VISION.md`, `MEMORY.md`, `DEPLOY.md`, `IDEAS.md`, `CHANGELOG.md`, `VERSION.md`, `ROADMAP.md`, `TODO.md`, `HANDOFF.md`, `AGENTS.md`).
->>>>>>> origin/jules-3434254056450392757-d9850c0f

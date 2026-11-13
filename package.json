@@ -1,9 +1,9 @@
 {
-  "name": "next-app",
-  "version": "0.2.1",
+  "name": "aicrm",
+  "version": "0.13.1",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p 3007",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

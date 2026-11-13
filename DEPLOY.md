@@ -8,7 +8,7 @@
 ## Environment Setup
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/candlestixxx/aicrm.git
+    git clone https://github.com/RealEstateCRMLLC/aicrm.git
     cd aicrm
     ```
 

@@ -5,7 +5,7 @@
 ## Repository
 | Property | Value |
 |----------|-------|
-| **Remote URL** | `https://github.com/candlestixxx/aicrm.git` |
+| **Remote URL** | `https://github.com/RealEstateCRMLLC/aicrm.git` |
 | **Default Branch** | `main` |
 | **Upstream Fork** | None (standalone origin) |
 | **Framework** | Next.js 16 + TypeScript 5 + Tailwind CSS 4 |
