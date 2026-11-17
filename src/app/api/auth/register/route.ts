@@ -52,11 +52,19 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(password);
 
+    // Brokerage requires a parent Tenant (tenantId is NOT NULL in the
+    // schema); create it first or brokerage.create throws
+    // "Argument `tenant` is missing" and every signup 500s.
+    const tenant = await prisma.tenant.create({
+      data: { name: brokerageName || `${name}'s Brokerage` },
+    });
+
     // Create brokerage if name provided, otherwise use a default
     let brokerageId: string;
     if (brokerageName) {
       const brokerage = await prisma.brokerage.create({
         data: {
+          tenantId: tenant.id,
           name: brokerageName,
           slug: brokerageName.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
         },
@@ -90,6 +98,7 @@ export async function POST(request: NextRequest) {
       // Create a personal brokerage
       const brokerage = await prisma.brokerage.create({
         data: {
+          tenantId: tenant.id,
           name: `${name}'s Brokerage`,
           slug: `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
         },
