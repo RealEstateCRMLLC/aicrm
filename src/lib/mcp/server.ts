@@ -27,6 +27,20 @@ export interface MCPSession {
   agentId?: string;
 }
 
+/**
+ * Contacts are tenant-scoped in the current schema (Contact.tenantId);
+ * the session carries a brokerageId. Resolve the tenant once per call -
+ * querying Contact by brokerageId throws Prisma validation errors.
+ */
+async function tenantIdFor(session: MCPSession): Promise<string> {
+  const brokerage = await prisma.brokerage.findUnique({
+    where: { id: session.brokerageId },
+    select: { tenantId: true },
+  });
+  if (!brokerage) throw new Error(`Brokerage "${session.brokerageId}" not found`);
+  return brokerage.tenantId;
+}
+
 // ─── Tool Definitions ───────────────────────────────────────────
 
 export const MCP_TOOLS: MCPToolDefinition[] = [
@@ -193,7 +207,8 @@ type ToolExecutor = (session: MCPSession, args: Record<string, unknown>) => Prom
 
 const executors: Record<string, ToolExecutor> = {
   async list_contacts(session, args) {
-    const where: Record<string, unknown> = { brokerageId: session.brokerageId };
+    const tenantId = await tenantIdFor(session);
+    const where: Record<string, unknown> = { tenantId };
     const search = args['search'] as string | undefined;
     const status = args['status'] as string | undefined;
     const limit = (args['limit'] as number) || 25;
@@ -204,19 +219,18 @@ const executors: Record<string, ToolExecutor> = {
         { lastName: { contains: search } },
         { email: { contains: search } },
         { phone: { contains: search } },
-        { city: { contains: search } },
       ];
     }
     if (status) {
-      where.lead = { status };
+      where.leads = { some: { status } };
     }
 
     return prisma.contact.findMany({
       where,
       select: {
         id: true, firstName: true, lastName: true, email: true,
-        phone: true, city: true, state: true, isLead: true,
-        lead: { select: { id: true, status: true, stage: { select: { name: true } } } },
+        phone: true, stage: true, source: true,
+        leads: { select: { id: true, status: true, stageId: true } },
       },
       take: Math.min(limit, 100),
       orderBy: { updatedAt: 'desc' },
@@ -224,31 +238,40 @@ const executors: Record<string, ToolExecutor> = {
   },
 
   async get_contact(session, args) {
+    const tenantId = await tenantIdFor(session);
     return prisma.contact.findFirst({
-      where: { id: args['id'] as string, brokerageId: session.brokerageId },
+      where: { id: args['id'] as string, tenantId },
       include: {
-        lead: { include: { stage: true } },
-        activities: { orderBy: { createdAt: 'desc' }, take: 20 },
+        leads: { include: { stage: true } },
+        tags: { include: { tag: true } },
       },
     });
   },
 
   async create_contact(session, args) {
+    const tenantId = await tenantIdFor(session);
     const isLead = (args['isLead'] as boolean) || false;
-    return prisma.contact.create({
+    // Contact.agentId references AgentProfile (not the session's Agent);
+    // attach the brokerage's first profile when one exists.
+    const profile = await prisma.agentProfile.findFirst({
+      where: { brokerageId: session.brokerageId },
+      select: { id: true },
+    });
+    const contact = await prisma.contact.create({
       data: {
-        brokerageId: session.brokerageId,
-        assignedAgentId: session.agentId,
+        tenantId,
+        agentId: profile?.id ?? null,
         firstName: args['firstName'] as string,
         lastName: args['lastName'] as string,
         email: (args['email'] as string) || null,
         phone: (args['phone'] as string) || null,
-        city: (args['city'] as string) || null,
-        state: (args['state'] as string) || null,
         source: (args['source'] as string) || null,
-        isLead,
       },
     });
+    if (isLead) {
+      await prisma.lead.create({ data: { contactId: contact.id } });
+    }
+    return contact;
   },
 
   async update_lead_stage(session, args) {
@@ -258,8 +281,9 @@ const executors: Record<string, ToolExecutor> = {
     if (args['stageId']) data.stageId = args['stageId'];
     if (args['status'] || args['stageId']) data.lastContacted = new Date();
 
+    const tenantId = await tenantIdFor(session);
     const lead = await prisma.lead.findFirst({
-      where: { id: leadId, contact: { brokerageId: session.brokerageId } },
+      where: { id: leadId, contact: { tenantId } },
     });
     if (!lead) throw new Error(`Lead "${leadId}" not found`);
 
@@ -299,10 +323,11 @@ const executors: Record<string, ToolExecutor> = {
   },
 
   async summarize_brokerage(session) {
+    const tenantId = await tenantIdFor(session);
     const [contacts, leads, hotLeads, properties, pendingTasks] = await Promise.all([
-      prisma.contact.count({ where: { brokerageId: session.brokerageId } }),
-      prisma.lead.count({ where: { contact: { brokerageId: session.brokerageId } } }),
-      prisma.lead.count({ where: { contact: { brokerageId: session.brokerageId }, status: 'hot' } }),
+      prisma.contact.count({ where: { tenantId } }),
+      prisma.lead.count({ where: { contact: { tenantId } } }),
+      prisma.lead.count({ where: { contact: { tenantId }, status: 'hot' } }),
       prisma.property.count({ where: { brokerageId: session.brokerageId } }),
       prisma.task.count({ where: { agent: { brokerageId: session.brokerageId }, status: 'pending' } }),
     ]);
@@ -318,31 +343,37 @@ const executors: Record<string, ToolExecutor> = {
   },
 
   async search_contacts(session, args) {
+    const tenantId = await tenantIdFor(session);
     const query = args['query'] as string;
     return prisma.contact.findMany({
       where: {
-        brokerageId: session.brokerageId,
+        tenantId,
         OR: [
           { firstName: { contains: query } },
           { lastName: { contains: query } },
           { email: { contains: query } },
           { phone: { contains: query } },
-          { city: { contains: query } },
-          { tags: { contains: query } },
+          { tags: { some: { tag: { name: { contains: query } } } } },
         ],
       },
       select: {
         id: true, firstName: true, lastName: true, email: true, phone: true,
-        city: true, tags: true, isLead: true,
+        stage: true, source: true,
       },
       take: 25,
     });
   },
 
   async log_activity(session, args) {
+    const tenantId = await tenantIdFor(session);
+    const contact = await prisma.contact.findFirst({
+      where: { id: args['contactId'] as string, tenantId },
+      select: { id: true },
+    });
+    if (!contact) throw new Error(`Contact "${args['contactId'] as string}" not found`);
     return prisma.activity.create({
       data: {
-        contactId: args['contactId'] as string,
+        contactId: contact.id,
         type: (args['type'] as string) || 'note',
         description: args['description'] as string,
       },
