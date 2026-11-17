@@ -102,6 +102,7 @@ export const MCP_TOOLS: MCPToolDefinition[] = [
           enum: ['new', 'active', 'hot', 'cold', 'closed_won', 'closed_lost'],
         },
         stageId: { type: 'string', description: 'Optional pipeline stage ID' },
+        stageName: { type: 'string', description: 'Optional pipeline stage name (e.g. "Contacted"); resolved within the brokerage' },
       },
       required: ['leadId'],
     },
@@ -276,16 +277,53 @@ const executors: Record<string, ToolExecutor> = {
 
   async update_lead_stage(session, args) {
     const leadId = args['leadId'] as string;
-    const data: Record<string, unknown> = {};
-    if (args['status']) data.status = args['status'];
-    if (args['stageId']) data.stageId = args['stageId'];
-    if (args['status'] || args['stageId']) data.lastContacted = new Date();
-
     const tenantId = await tenantIdFor(session);
     const lead = await prisma.lead.findFirst({
       where: { id: leadId, contact: { tenantId } },
     });
     if (!lead) throw new Error(`Lead "${leadId}" not found`);
+
+    const data: Record<string, unknown> = {};
+    if (args['status']) {
+      const status = String(args['status']);
+      const STATUSES = ['new', 'active', 'hot', 'cold', 'closed_won', 'closed_lost'];
+      if (!STATUSES.includes(status)) {
+        throw new Error(`Invalid status "${status}". Valid statuses: ${STATUSES.join(', ')}`);
+      }
+      data.status = status;
+    }
+    if (args['stageId']) {
+      const stage = await prisma.pipelineStage.findFirst({
+        where: { id: String(args['stageId']), pipeline: { brokerageId: session.brokerageId } },
+      });
+      if (!stage) throw new Error(`Stage "${args['stageId']}" not found in this brokerage`);
+      data.stageId = stage.id;
+      if (!lead.pipelineId) data.pipelineId = stage.pipelineId;
+    }
+    if (args['stageName']) {
+      // The tool is NAMED update_lead_stage, so callers naturally pass
+      // a stage name — which used to be silently ignored (a 200 no-op).
+      // Resolve it against the brokerage's pipeline stages. Matched
+      // case-insensitively in code: the libsql datasource does not
+      // support Prisma's `mode: 'insensitive'` filter.
+      const target = String(args['stageName']).toLowerCase();
+      const stages = await prisma.pipelineStage.findMany({
+        where: {
+          pipeline: {
+            brokerageId: session.brokerageId,
+            ...(lead.pipelineId ? { id: lead.pipelineId } : {}),
+          },
+        },
+      });
+      const stage = stages.find((s) => s.name.toLowerCase() === target);
+      if (!stage) throw new Error(`Stage "${args['stageName']}" not found in this brokerage's pipelines`);
+      data.stageId = stage.id;
+      if (!lead.pipelineId) data.pipelineId = stage.pipelineId;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new Error('Nothing to update: provide status, stageId, or stageName');
+    }
+    data.lastContacted = new Date();
 
     return prisma.lead.update({ where: { id: leadId }, data });
   },
