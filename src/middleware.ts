@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
+// NOTE: this guard previously lived in src/proxy.ts, but aicrm is on Next 15
+// where the proxy convention does not exist — the file was never compiled
+// (empty middleware manifest), leaving every page and the contacts API
+// publicly reachable. Next 15 recognizes middleware.ts; the root
+// turbopack pin in next.config.ts keeps discovery inside this app.
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'local-dev-jwt-secret-at-least-32-chars!!'
 );
@@ -23,7 +28,7 @@ const PUBLIC_PATHS = [
   '/api/webhooks/mls',
 ];
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
