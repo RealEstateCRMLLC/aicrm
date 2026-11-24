@@ -240,13 +240,23 @@ const executors: Record<string, ToolExecutor> = {
 
   async get_contact(session, args) {
     const tenantId = await tenantIdFor(session);
-    return prisma.contact.findFirst({
-      where: { id: args['id'] as string, tenantId },
+    // Accept the schema's `id` and the natural `contactId` guess. A
+    // missing id must never reach the query: Prisma treats undefined
+    // as "no filter", which returned the tenant's FIRST contact for a
+    // bogus id — a wrong-record answer, not a harmless null.
+    const id = (args['id'] ?? args['contactId']) as string;
+    if (!id || typeof id !== 'string') {
+      throw new Error('get_contact requires a contact id');
+    }
+    const contact = await prisma.contact.findFirst({
+      where: { id, tenantId },
       include: {
         leads: { include: { stage: true } },
         tags: { include: { tag: true } },
       },
     });
+    if (!contact) throw new Error(`Contact "${id}" not found`);
+    return contact;
   },
 
   async create_contact(session, args) {
@@ -404,6 +414,11 @@ const executors: Record<string, ToolExecutor> = {
 
   async log_activity(session, args) {
     const tenantId = await tenantIdFor(session);
+    // Require the id up front: an undefined id widens findFirst to the
+    // tenant's first contact and would log against the wrong record.
+    if (!args['contactId'] || typeof args['contactId'] !== 'string') {
+      throw new Error('log_activity requires a contactId');
+    }
     const contact = await prisma.contact.findFirst({
       where: { id: args['contactId'] as string, tenantId },
       select: { id: true },
